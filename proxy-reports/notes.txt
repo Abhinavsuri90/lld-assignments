@@ -2,24 +2,27 @@ proxy-reports – my notes
 --------------------------
 
 what I built and why:
-the original code had ReportViewer calling ReportFile directly - no access control,
-and the expensive disk load happened every single time display() was called even for
-the same report. the fix was to introduce a ReportProxy that sits between the viewer
-and the real report. the proxy holds just the metadata (id, title, classification) and
-a null reference to the real report. when display() is called it first checks if the
-user is allowed via AccessControl - if not, it prints access denied and returns early,
-no loading happens at all. if allowed and its the first time, it creates RealReport
-which does the disk load. after that the same RealReport is reused for every repeat
-call through the same proxy - no second disk hit. ReportViewer now depends on the
-Report interface so it never touches the concrete classes directly.
+the original design had three big problems: any user could open any report (no access
+control), the disk load triggered on every single display() call even for the same report
+(no caching), and ReportViewer was tightly coupled to the concrete ReportFile class. the
+Proxy pattern fixes all of this cleanly. I introduced a Report interface with one method:
+display(User user). RealReport implements it and does the actual disk load in its constructor
+- simulates a slow 120ms file read. ReportProxy also implements Report and wraps RealReport.
+the proxy stores only metadata (reportId, title, classification) and a nullable RealReport
+field that starts as null. on each display() call the proxy does three things in order:
+1) check access via AccessControl - if denied, print blocked message and return immediately,
+no loading at all. 2) if allowed and realReport is null, create it now (lazy load - first
+time only). 3) if realReport already exists just reuse it (cached - no second disk hit).
+ReportViewer was updated to take Report instead of ReportFile so it works with the proxy
+without knowing any internals. the output logs make it very clear what happened each call.
 
 patterns used:
-- Proxy (main one - access control + lazy loading + caching)
+- Proxy (access control + lazy loading + caching in a single wrapper class)
 
 challenges:
-the lazy load part was a bit tricky to think through - the realReport field starts as
-null and only gets assigned the first time an authorised user calls display(). had to
-make sure the null check happens AFTER the access check, otherwise a denied user could
-still trigger the load which defeats the whole point. also changed ReportViewer to take
-Report interface instead of ReportFile so the client code stays clean and doesnt need
-to know whether its talking to a proxy or the real thing.
+order of checks matters a lot here - the access check MUST come before the null check.
+if I had done it the other way around, a denied student hitting a cached report would
+still get shown the content. also had to think carefully about where the disk load goes -
+I put it in RealReport's constructor so loading is automatic the moment the object is
+created, and the proxy controls exactly when that happens by controlling when it calls
+new RealReport(). kept them clean and separate that way.

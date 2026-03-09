@@ -2,20 +2,23 @@ adapter-payments – my notes
 ----------------------------
 
 what I built and why:
-the problem was OrderService was directly calling FastPayClient and SafeCashClient with
-different method signatures, so adding a new payment provider meant touching OrderService
-every time - bad. I introduced a PaymentGateway interface with one method: charge().
-then wrote FastPayAdapter and SafeCashAdapter - each one just wraps its SDK and translates
-the charge() call into whatever that SDK actually needs. now OrderService only talks to
-PaymentGateway, doesnt care which provider is behind it. added a new provider? just make
-a new adapter and drop it in the map. OrderService never changes.
+the starter had OrderService talking directly to FastPayClient and SafeCashClient - two
+SDKs with completely different method signatures. FastPay has payNow(custId, amount),
+SafeCash has createPayment(amount, user) then confirm() on the result. messy. I added a
+PaymentGateway interface with a single charge(customerId, amountCents) method. then made
+FastPayAdapter and SafeCashAdapter - each class takes its SDK in the constructor and in
+charge() just translates the call to whatever that SDK needs. App builds a HashMap with
+"fastpay" and "safecash" as keys and passes it into OrderService. OrderService just does
+gateways.get(provider).charge(...) - thats it. want to add a third provider later? write
+one new adapter class, add one line to the map in App. OrderService code stays untouched.
 
 patterns used:
-- Adapter (main pattern - bridging incompatible interfaces)
-- Constructor injection (pass the map of gateways into OrderService)
+- Adapter (bridging incompatible interfaces behind a common target)
+- Constructor injection (map of gateways injected into OrderService)
 
 challenges:
-SafeCash was the tricky one - it doesnt have a single pay() call, it does createPayment()
-first and then you call confirm() on the result. took me a minute to figure out I needed
-to chain those two inside the adapter. also used Objects.requireNonNull in both adapters
-and OrderService to guard against null inputs like the hints said.
+the SafeCash one took a sec - its two-step: createPayment() returns a SafeCashPayment
+object and you have to call confirm() on that to get the transaction id. so inside
+SafeCashAdapter.charge() I had to do both in sequence and return the result of confirm().
+once I realised I just had to chain the two calls it was straightforward. also made sure
+both adapters validate null inputs with Objects.requireNonNull as the hints mentioned.

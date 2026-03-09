@@ -2,21 +2,25 @@ flyweight-markers – my notes
 ------------------------------
 
 what I built and why:
-the problem was every single MapMarker was creating its own MarkerStyle object even when
-thousands of markers had the exact same shape/color/size/filled combo. with 30k markers
-thats 30k objects for maybe 96 unique styles - total waste. so I made MarkerStyle immutable
-(all final fields, removed the setters) and built a MarkerStyleFactory that caches styles
-by a string key like "PIN|RED|12|F". now MapDataSource asks the factory for a style instead
-of doing new MarkerStyle() each time. same combo = same object returned from cache every time.
-MapMarker now just takes a MarkerStyle directly instead of the raw params.
+the idea in Flyweight is to split state into intrinsic (shared, same for many objects) and
+extrinsic (unique per object). here the intrinsic state is style - shape, color, size, filled.
+the extrinsic state is lat, lng, label - different for every marker. problem was the starter
+was doing new MarkerStyle(...) inside each MapMarker constructor so 30k markers = 30k style
+objects even though there are only 96 possible unique combos (3 shapes x 4 colors x 4 sizes
+x 2 filled). total memory waste. I made MarkerStyle fully immutable - all fields final,
+removed all setters - so it's safe to share. then implemented MarkerStyleFactory with a
+HashMap cache keyed by "shape|color|size|F_or_O" e.g. "PIN|RED|12|F". if the key is already
+in the map it returns the existing object, otherwise creates one and stores it. MapDataSource
+now calls styleFactory.get(...) and passes the returned MarkerStyle directly into MapMarker.
+MapMarker constructor was changed to accept MarkerStyle instead of raw params.
+QuickCheck verified: 96 unique style instances across 20000 markers. perfect.
 
 patterns used:
-- Flyweight (main one - sharing immutable intrinsic state across objects)
+- Flyweight (shared immutable intrinsic state via factory cache)
 
 challenges:
-the MapMarker constructor change was the part that needed most thought - had to change it
-from taking raw style params to accepting a MarkerStyle directly, and then update MapDataSource
-to call the factory before creating the marker. also had to make sure MarkerStyle had no setters
-at all otherwise the shared object could get mutated by one marker and affect all the others
-which would completely break the pattern. QuickCheck confirmed it works - 96 unique instances
-for 20000 markers, exactly the max possible combos.
+the immutability part is critical and easy to miss - if MarkerStyle had setters, one marker
+could mutate the shared object and it would silently affect thousands of other markers using
+the same style. had to remove all four setters and make every field final. also had to update
+MapMarker's constructor signature which meant updating MapDataSource too - that was the
+biggest ripple change, but once both were updated together it all fell into place.
