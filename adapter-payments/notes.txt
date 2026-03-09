@@ -1,0 +1,18 @@
+adapter-payments assignment notes
+----------------------------------
+
+what I did:
+made FastPayAdapter and SafeCashAdapter to wrap the two SDK clients behind a common
+PaymentGateway interface. wired both into a map in App so OrderService doesnt need
+to know which provider its talking to at all.
+
+patterns used:
+- Adapter pattern
+- constructor injection
+
+challenges:
+honestly the SafeCash one tripped me up a bit - the SDK splits the charge into
+createPayment() and then confirm() separately so I had to chain them inside the adapter.
+took me a second to realize thats just how that SDK works lol. also kept second-guessing
+whether to put the map in App or OrderService but constructor injection in OrderService
+felt cleaner so went with that.
